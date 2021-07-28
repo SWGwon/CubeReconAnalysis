@@ -78,7 +78,7 @@ void Analysis() {
 void PrintEventInformation(int eventNum) {
     inputTree->GetEntry(eventNum);
 
-    std::cout << "evevnt #" << eventNum << std::endl;
+    std::cout << "event #" << eventNum << std::endl;
     Cube::Event::G4TrajectoryContainer trajectories = event->G4Trajectories;
     Cube::Handle<Cube::ReconObjectContainer> objects = event->GetObjectContainer();
     if (!objects) 
