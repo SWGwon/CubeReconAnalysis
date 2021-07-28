@@ -22,7 +22,7 @@ and compile CubeRecon.
 
 #### Example output
     SetBranchAddressInputTree
-    evevnt #10
+    event #10
     PrintTrajectoriesInformation
     trajectories[0]
     |-pdg code: -14
@@ -31,7 +31,7 @@ and compile CubeRecon.
     |-time: 1
     |-parentId: -1
     trajectories[1]
-     |-pdg code: 2112
+    |-pdg code: 2112
     |-relativistic E: 989.128MeV
     |-position: 1112.64, -2501.86, 24131.9
     |-time: 1
