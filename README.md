@@ -1,5 +1,5 @@
 # CubeReconAnalysis
-It prints basic information of trajectories, objects.
+This prints basic information of trajectories, objects.
 ## Entire CubeReconAnalysis folder should be sub-directory of CubeRecon 
 Put CubeReconAnalysis into CubeRecon.
 
