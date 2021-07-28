@@ -15,3 +15,7 @@ and compile CubeRecon.
         -n ${eventNum} (OPTIONAL) : specify event to look at.
                                     If not specified, loop all events.
         -h                        : show this message
+
+#### Example
+
+    ./analysisExample -i test.root -n 10
