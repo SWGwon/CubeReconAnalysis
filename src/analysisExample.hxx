@@ -34,7 +34,11 @@ void PrintSyntax();
 void SetBranchAddressInputTree();
 void Analysis();
 void PrintEventInformation(int eventNum);
+void PrintTrajectoriesInformation(const Cube::Event::G4TrajectoryContainer& trajectories);
 void PrintPrimaryInformation(const Cube::Event::G4TrajectoryContainer& trajectories);
+void PrintTrajectoryInformation(
+        const Cube::Event::G4TrajectoryContainer& trajectories,
+        int trajId);
 void PrintObjectInformation( 
         const Cube::Handle<Cube::ReconObjectContainer>& objects, 
         const Cube::Event::G4TrajectoryContainer& trajectories);

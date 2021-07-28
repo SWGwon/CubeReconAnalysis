@@ -84,9 +84,18 @@ void PrintEventInformation(int eventNum) {
     if (!objects) 
         return;
 
-    PrintPrimaryInformation(trajectories);
+    PrintTrajectoriesInformation(trajectories);
+    //PrintPrimaryInformation(trajectories);
     PrintObjectInformation(objects, trajectories);
     std::cout << "-----------------------------------------------------" << std::endl;
+}
+//----------------------------------------------------------------------------------------
+void PrintTrajectoriesInformation(const Cube::Event::G4TrajectoryContainer& trajectories) {
+    std::cout << __func__ << std::endl;
+
+    for (int i = 0; i < trajectories.size(); ++i) {
+        PrintTrajectoryInformation(trajectories, i);
+    }
 }
 //----------------------------------------------------------------------------------------
 void PrintPrimaryInformation(const Cube::Event::G4TrajectoryContainer& trajectories) {
@@ -94,15 +103,23 @@ void PrintPrimaryInformation(const Cube::Event::G4TrajectoryContainer& trajector
 
     std::vector<int> primaries = Cube::Tool::AllPrimaries(*event);
     for (auto i : primaries) {
-        std::cout << "trajectories[" << i << "]\n";
-        std::cout << " |-pdg code: " << trajectories.at(i)->GetPDGCode() << "\n";
-        std::cout << " |-relativistic E: " << trajectories.at(i)->GetInitialMomentum().E() << "\n";
-        std::cout << " |-position: " << trajectories.at(i)->GetInitialPosition().X() << ", ";
-        std::cout <<  trajectories.at(i)->GetInitialPosition().Y() << ", ";
-        std::cout <<  trajectories.at(i)->GetInitialPosition().Z() << "\n";
-        std::cout << " |-time: " << trajectories.at(i)->GetInitialPosition().T();
-        std::cout << std::endl;
+        PrintTrajectoryInformation(trajectories, i);
     }
+}
+//----------------------------------------------------------------------------------------
+void PrintTrajectoryInformation(
+        const Cube::Event::G4TrajectoryContainer& trajectories,
+        int trajId) {
+    std::cout << "trajectories[" << trajId << "]\n";
+    std::cout << " |-pdg code: " << trajectories.at(trajId)->GetPDGCode() << "\n";
+    std::cout << " |-relativistic E: " << trajectories.at(trajId)->GetInitialMomentum().E();
+    std::cout << "MeV\n";
+    std::cout << " |-position: " << trajectories.at(trajId)->GetInitialPosition().X() << ", ";
+    std::cout <<  trajectories.at(trajId)->GetInitialPosition().Y() << ", ";
+    std::cout <<  trajectories.at(trajId)->GetInitialPosition().Z() << "\n";
+    std::cout << " |-time: " << trajectories.at(trajId)->GetInitialPosition().T() << "\n";
+    std::cout << " |-parentId: " << trajectories.at(trajId)->GetParentId();
+    std::cout << std::endl;
 }
 //----------------------------------------------------------------------------------------
 void PrintObjectInformation( 
@@ -165,6 +182,7 @@ void PrintTrackInformation(
     //get traj Id corresponding this track
     int mainTraj = Cube::Tool::MainTrajectory(*event, *track);
     std::cout << "track\n";
+    std::cout << " |-trajectory id: " << mainTraj << "\n";
     std::cout << " |-pdg code: " << trajectories.at(mainTraj)->GetPDGCode() << "\n";
     std::cout << " |-edep: " << track->GetEDeposit() << "pe\n";
     std::cout << " |-position: " << track->GetPosition().X() << ", ";
@@ -180,6 +198,7 @@ void PrintClusterInformation(
     //get traj Id corresponding this cluster
     int mainTraj = Cube::Tool::MainTrajectory(*event, *cluster);
     std::cout << "cluster\n";
+    std::cout << " |-trajectory id: " << mainTraj << "\n";
     std::cout << " |-pdg code: " << trajectories.at(mainTraj)->GetPDGCode() << "\n";
     std::cout << " |-edep: " << cluster->GetEDeposit() << "pe\n";
     std::cout << " |-position: " << cluster->GetPosition().X() << ", ";
