@@ -7,4 +7,4 @@ At top CMakeLists.txt of CubeRecon, put this line
 
     add_subdirectory(CubeReconAnalysis)
     
-and compile.
+and compile CubeRecon.
