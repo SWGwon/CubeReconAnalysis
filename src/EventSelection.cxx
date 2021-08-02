@@ -1,22 +1,27 @@
 #include "EventSelection.hxx"
 
+std::string cubeReconFile;
+std::string genieFile;
+std::string genieReWeightFile;
+
+bool ParseArgs(int argc, char* argv[]);
+void PrintSyntax();
 
 bool usingMedian = true;
 
-
 int main(int argc, char** argv) {
-    NEUTRONMATCH = std::stod(argv[1]);
-    THRESHOLD = std::stod(argv[2]);
+    if (!ParseArgs(argc, argv)) return 0;
 
     SetOutputTree();
 
-    TFile inputFile("input_cuberecon.root");
+    TFile inputFile(cubeReconFile.c_str());
     //TFile inputEDepSimFile("input_edepsim.root");
-    TFile inputGenieFile("input_genie.root");
-    //if (!inputFile.IsOpen() || !inputGenieFile.IsOpen())
-    //    continue;
-    //if (inputFile.TestBit(TFile::kRecovered) || inputGenieFile.TestBit(TFile::kRecovered))
-    //    continue;
+    TFile inputGenieFile(genieFile.c_str());
+    TFile inputGenieReWeightFile(genieReWeightFile.c_str());
+    if (!inputGenieFile.IsOpen() || !inputGenieReWeightFile.IsOpen() || !inputFile.IsOpen())
+        return 0;
+    if (inputGenieFile.TestBit(TFile::kRecovered) || inputGenieReWeightFile.TestBit(TFile::kRecovered) || inputFile.TestBit(TFile::kRecovered))
+        return 0;
     TTree* inputChain = (TTree*)inputFile.Get("CubeEvents");
     inputChain->SetBranchAddress("Event", &event);
 
@@ -27,6 +32,10 @@ int main(int argc, char** argv) {
     inputGenieTree->SetBranchAddress("StdHepPdg", &StdHepPdg);
     inputGenieTree->SetBranchAddress("StdHepN", &StdHepN);
 
+    TTree* inputGenieReWeightTree = (TTree*)inputGenieReWeightFile.Get("tree");
+    inputGenieReWeightTree->SetBranchAddress("eventnum", &eventnum);
+    inputGenieReWeightTree->SetBranchAddress("avg_weight", &avg_weight);
+
     //TTree* gEDepSimTree = (TTree*)inputEDepSimFile.Get("EDepSimEvents");
     //gEDepSimTree->SetBranchAddress("Event",&gEDepSimEvent);
 
@@ -34,6 +43,7 @@ int main(int argc, char** argv) {
         eventId = i;
         inputChain->GetEntry(i);
         inputGenieTree->GetEntry(i);
+        inputGenieReWeightTree->GetEntry(i);
         //gEDepSimTree->GetEntry(i);
         Analysis(event);
         std::cout << "event: " << i << std::endl;
@@ -45,16 +55,89 @@ int main(int argc, char** argv) {
     return 0;
 }
 //----------------------------------------------------------------------------------------
-void Analysis(Cube::Event* event) {
+bool ParseArgs(int argc, char* argv[]) {
+    bool status = false;
+
+    int index;
+    int iarg = 0;
+    const struct option longopts[] =
+    {
+        {"input-cuberecon",      required_argument, 0, '1'},
+        {"input-genie",          required_argument, 0, '2'},
+        {"input-genie-reweight", required_argument, 0, '3'},
+        {"threshold",            required_argument, 0, 't'},
+        {"help",       no_argument,       0, 'h'},
+        {0,0,0,0},
+    };
+
+    while (iarg != -1) {
+        iarg = getopt_long(argc, argv, "1:2:3:t:", longopts, &index);
+        switch (iarg) {
+            case '1' :
+                {
+                    cubeReconFile = optarg;
+                    break;
+                }
+            case '2' :
+                {
+                    genieFile = optarg;
+                    break;
+                }
+            case '3' :
+                {
+                    genieReWeightFile = optarg;
+                    break;
+                }
+            case 't' :
+                {
+                    THRESHOLD = std::stod(optarg);
+                    break;
+                }
+            case 'h' :
+                {
+                    PrintSyntax();
+                    break;
+                }
+        }
+    }
+
+    if (!cubeReconFile.empty() && !genieFile.empty() && !genieReWeightFile.empty()) status = true;
+    if (!status) {
+        if (cubeReconFile.empty())
+            std::cout << "cubeRecon file is required" << std::endl;
+        if (genieFile.empty())
+            std::cout << "genie file is required" << std::endl;
+        if (genieReWeightFile.empty())
+            std::cout << "genieReWeight file is required" << std::endl;
+        PrintSyntax();
+    }
+    return status;
+}
+//----------------------------------------------------------------------------------------
+void PrintSyntax() {
+    std::cout << "./HighNuFitter\n";
+    std::cout << "  --input-cuberecon ${cuberecon file}            (REQUIRED)\n";
+    std::cout << "  --input-genie ${genie file}                    (REQUIRED)\n";
+    std::cout << "  --input-genie-reweight ${genie reweight file}  (REQUIRED)\n";
+    std::cout << "  -t, --threshold ${threshold}                   (OPTIONAL)\n";
+    std::cout << "    : edep threshold (pe) for recon object, default: 30pe \n";
+    std::cout << "  -h, --help\n";
+    std::cout << "    : show this message\n";
+    std::cout << std::endl;
+}
+//----------------------------------------------------------------------------------------
+void Analysis(Cube::Event* inEvent) {
     InitializeOutputVariables();
 
     if (!isNuMuBar())
         return;
 
-    Cube::Event::G4TrajectoryContainer trajectories = event->G4Trajectories;
-    Cube::Handle<Cube::ReconObjectContainer> objects = event->GetObjectContainer();
+    Cube::Event::G4TrajectoryContainer trajectories = inEvent->G4Trajectories;
+    Cube::Handle<Cube::ReconObjectContainer> objects = inEvent->GetObjectContainer();
     if (!objects) 
         return;
+
+    reWeight = avg_weight;
     
     //FillObjectPosition(objects);
     FillPrimaryInformation(trajectories);
@@ -69,7 +152,7 @@ void Analysis(Cube::Event* event) {
     }
 
     try {
-        trueVertex = SetTrueVetex(trajectories);
+        trueVertex = SetTrueVetex();
     } catch(...) {
         return;
     }
@@ -174,17 +257,18 @@ void SetOutputTree() {
     outputTree->Branch("object2Z", &object2Z, "object2Z[1000]/F");
     outputTree->Branch("genieN", &genieN);
     outputTree->Branch("numberOfObjectFromPrimaryNeutron", &numberOfObjectFromPrimaryNeutron, "numberOfObjectFromPrimaryNeutron[1000]/I");
+    outputTree->Branch("reWeight", &reWeight);
 
     outputTree->Branch("isIn1920width", &isIn1920width);
     outputTree->Branch("isIn1600width", &isIn1600width);
 
 }
 //----------------------------------------------------------------------------------------
-double GetTrackLength(Cube::Handle<Cube::ReconTrack>& earliestTrack) {
+double GetTrackLength(Cube::Handle<Cube::ReconTrack>& inTrack) {
     double tempTrackLength = -1;
-    Cube::ReconNodeContainer::iterator n = earliestTrack->GetNodes().begin();
+    Cube::ReconNodeContainer::iterator n = inTrack->GetNodes().begin();
     Cube::Handle<Cube::TrackState> lastState = (*(n++))->GetState();
-    while (n != earliestTrack->GetNodes().end()) {
+    while (n != inTrack->GetNodes().end()) {
         Cube::Handle<Cube::TrackState> nodeState = (*(n++))->GetState();
         tempTrackLength += (nodeState->GetPosition().Vect()
                 - lastState->GetPosition().Vect()).Mag();
@@ -192,7 +276,7 @@ double GetTrackLength(Cube::Handle<Cube::ReconTrack>& earliestTrack) {
     }
     return tempTrackLength;
 }
-
+//----------------------------------------------------------------------------------------
 bool isTPC(const Cube::Handle<Cube::ReconObject>& object)
 {
     Cube::Handle<Cube::HitSelection> inputHits = object->GetHitSelection();
@@ -244,6 +328,8 @@ bool Tsort(Cube::Handle<Cube::ReconObject> o1, Cube::Handle<Cube::ReconObject> o
     if (cluster1 && cluster2) {
         return(cluster1->GetMedian().T() < cluster2->GetMedian().T());
     }
+
+    return false;
 }
 //----------------------------------------------------------------------------------------
 void InitializeOutputVariables() {
@@ -353,7 +439,7 @@ void FillGenieInformation() {
 std::vector<Cube::Handle<Cube::ReconObject>> GetMuonObjectVector(
         Cube::Event::G4TrajectoryContainer trajectories, 
         Cube::Handle<Cube::ReconObjectContainer> objects) {
-    std::vector<Cube::Handle<Cube::ReconObject>> muonObjectVector;
+    std::vector<Cube::Handle<Cube::ReconObject>> tempMuonObjectVector;
     for (const auto& o : *objects) {
         if (!isValidObject(o)) {
             continue;
@@ -363,17 +449,17 @@ std::vector<Cube::Handle<Cube::ReconObject>> GetMuonObjectVector(
         int mainTraj = Cube::Tool::MainTrajectory(*event, *o);
         Cube::Handle<Cube::G4Trajectory> traj = trajectories[mainTraj];
         if (traj && traj->GetPDGCode() == -13 && traj->GetParentId() == -1) {
-            muonObjectVector.push_back(o);
+            tempMuonObjectVector.push_back(o);
         }
     }
-    if (muonObjectVector.size() == 0) 
-        throw std::runtime_error("muonObjectVector.size() == 0");
+    if (tempMuonObjectVector.size() == 0) 
+        throw std::runtime_error("tempMuonObjectVector.size() == 0");
 
     //added 20210711
-    if (muonObjectVector.size() != 1) 
-        throw std::runtime_error("muonObjectVector.size() != 1, broken muon track");
+    if (tempMuonObjectVector.size() != 1) 
+        throw std::runtime_error("tempMuonObjectVector.size() != 1, broken muon track");
 
-    return muonObjectVector;
+    return tempMuonObjectVector;
 }
 //---------------------------------------------------------------------------------------- 
 void FillIsolatedObjectPosition(Cube::Handle<Cube::ReconObjectContainer> objects) {
@@ -408,10 +494,9 @@ void FillIsolatedObjectPosition(Cube::Handle<Cube::ReconObjectContainer> objects
             }
         }
     }
-        std::cout << "5" << std::endl;
 }
 //---------------------------------------------------------------------------------------- 
-TLorentzVector SetTrueVetex(Cube::Event::G4TrajectoryContainer trajectories) {
+TLorentzVector SetTrueVetex() {
     Cube::Handle<Cube::ReconObject> recoVertex;
     float tempMuonT = 10E+5;
     for (const auto& m : muonObjectVector) {
@@ -428,27 +513,27 @@ TLorentzVector SetTrueVetex(Cube::Event::G4TrajectoryContainer trajectories) {
         throw std::runtime_error("tempMuonT == 10E+5");
     }
 
-    TLorentzVector trueVertex;
+    TLorentzVector tempTrueVertex;
 
     std::vector<Cube::Handle<Cube::G4Hit>> earliestSegs = Cube::Tool::ObjectG4Hits(*event,*recoVertex);
     double earliestTruth = 1E+8;
     for (std::vector<Cube::Handle<Cube::G4Hit>>::iterator t = earliestSegs.begin(); t != earliestSegs.end(); ++t) { 
         if ((*t)->GetStart().T() < earliestTruth) {
             earliestTruth = (*t)->GetStart().T();
-            trueVertex.SetX((*t)->GetStart().X());
-            trueVertex.SetY((*t)->GetStart().Y());
-            trueVertex.SetZ((*t)->GetStart().Z());
-            trueVertex.SetT((*t)->GetStart().T());
+            tempTrueVertex.SetX((*t)->GetStart().X());
+            tempTrueVertex.SetY((*t)->GetStart().Y());
+            tempTrueVertex.SetZ((*t)->GetStart().Z());
+            tempTrueVertex.SetT((*t)->GetStart().T());
         }
     }
 
-    return trueVertex;
+    return tempTrueVertex;
 }
 //---------------------------------------------------------------------------------------- 
 //select vertex
 //earliest muon 'track' position
 TLorentzVector SetRecoVertex(Cube::Event::G4TrajectoryContainer trajectories) {
-    TLorentzVector vertex;
+    TLorentzVector tempVertex;
     float tempMuonT = 10E+5;
     for (const auto& m : muonObjectVector) {
         if (!isValidObject(m))
@@ -459,7 +544,7 @@ TLorentzVector SetRecoVertex(Cube::Event::G4TrajectoryContainer trajectories) {
             Cube::Handle<Cube::G4Trajectory> traj = trajectories[mainTraj];
             tempMuonT = track->GetPosition().T();
             muonE = traj->GetInitialMomentum().E();
-            vertex = track->GetPosition();
+            tempVertex = track->GetPosition();
         }
     }
     if (tempMuonT == 10E+5) {
@@ -469,7 +554,7 @@ TLorentzVector SetRecoVertex(Cube::Event::G4TrajectoryContainer trajectories) {
     std::cout << "genie vertex: " << EvtVtx[0]*1000 << ", " << EvtVtx[1]*1000 << ", " << EvtVtx[2]*1000 << std::endl;
     std::cout << "selected vertex: " << vertex.X() << ", " << vertex.Y() << ", " << vertex.Z() << std::endl;
 
-    return vertex;
+    return tempVertex;
 }
 //---------------------------------------------------------------------------------------- 
 //select channel
@@ -515,7 +600,7 @@ void FillPrimaryInformation(Cube::Event::G4TrajectoryContainer trajectories) {
 //---------------------------------------------------------------------------------------- 
 Cube::Handle<Cube::ReconObject> GetFirstObjectInTime(
         Cube::Handle<Cube::ReconObjectContainer> objects) {
-    Cube::Handle<Cube::ReconObject> earliestObject;
+    Cube::Handle<Cube::ReconObject> tempEarliestObject;
     float tempEarliestT = 10E+5;
 
     for (const auto& m : muonObjectVector) {
@@ -533,33 +618,33 @@ Cube::Handle<Cube::ReconObject> GetFirstObjectInTime(
                     continue;
                 } else if (usingMedian && track->GetMedian().T() < tempEarliestT && track->GetEDeposit() > THRESHOLD) {
                     tempEarliestT = track->GetMedian().T();
-                    earliestObject = o;
+                    tempEarliestObject = o;
                 } else if (!usingMedian && track->GetPosition().T() < tempEarliestT && track->GetEDeposit() > THRESHOLD) {
                     tempEarliestT = track->GetPosition().T();
-                    earliestObject = o;
+                    tempEarliestObject = o;
                 }
             } else if (cluster) {
                 if (Cube::Tool::AreNeighboringObjects(*m, *cluster, MUONACTIVITY) || (cluster->GetPosition().Vect() - vertex.Vect()).Mag() < VERTEXACTIVITY) {
                     continue;
                 } else if (usingMedian && cluster->GetMedian().T() < tempEarliestT && cluster->GetEDeposit() > THRESHOLD) {
                     tempEarliestT = cluster->GetMedian().T();
-                    earliestObject = o;
+                    tempEarliestObject = o;
                 } else if (!usingMedian && cluster->GetPosition().T() < tempEarliestT && cluster->GetEDeposit() > THRESHOLD) {
                     tempEarliestT = cluster->GetPosition().T();
-                    earliestObject = o;
+                    tempEarliestObject = o;
                 }
             }
         }
     }
-    if (!isValidObject(earliestObject) || tempEarliestT == 10E+5)
-        throw std::runtime_error("invalid earliestObject");
+    if (!isValidObject(tempEarliestObject) || tempEarliestT == 10E+5)
+        throw std::runtime_error("invalid tempEarliestObject");
 
-    return earliestObject;
+    return tempEarliestObject;
 }
 //---------------------------------------------------------------------------------------- 
 Cube::Handle<Cube::ReconObject> GetFirstObjectInTimeNoMuon(
         Cube::Handle<Cube::ReconObjectContainer> objects) {
-    Cube::Handle<Cube::ReconObject> earliestObject;
+    Cube::Handle<Cube::ReconObject> tempEarliestObject;
     float tempEarliestT = 10E+5;
     for (const auto& o : *objects) {
         if (!isValidObject(o))
@@ -571,33 +656,33 @@ Cube::Handle<Cube::ReconObject> GetFirstObjectInTimeNoMuon(
                 continue;
             } else if (usingMedian && track->GetMedian().T() < tempEarliestT && track->GetEDeposit() > THRESHOLD) {
                 tempEarliestT = track->GetMedian().T();
-                earliestObject = o;
+                tempEarliestObject = o;
             } else if (!usingMedian && track->GetPosition().T() < tempEarliestT && track->GetEDeposit() > THRESHOLD) {
                 tempEarliestT = track->GetPosition().T();
-                earliestObject = o;
+                tempEarliestObject = o;
             }
         } else if (cluster) {
             if ((cluster->GetPosition().Vect() - vertex.Vect()).Mag() < VERTEXACTIVITY) {
                 continue;
             } else if (usingMedian && cluster->GetMedian().T() < tempEarliestT && cluster->GetEDeposit() > THRESHOLD) {
                 tempEarliestT = cluster->GetMedian().T();
-                earliestObject = o;
+                tempEarliestObject = o;
             } else if (!usingMedian && cluster->GetPosition().T() < tempEarliestT && cluster->GetEDeposit() > THRESHOLD) {
                 tempEarliestT = cluster->GetPosition().T();
-                earliestObject = o;
+                tempEarliestObject = o;
             }
         }
     }
-    if (!isValidObject(earliestObject) || tempEarliestT == 10E+5)
-        throw std::runtime_error("invalid earliestObject");
+    if (!isValidObject(tempEarliestObject) || tempEarliestT == 10E+5)
+        throw std::runtime_error("invalid tempEarliestObject");
 
-    return earliestObject;
+    return tempEarliestObject;
 }
 //---------------------------------------------------------------------------------------- 
 Cube::Handle<Cube::ReconObject> GetFirstObjectInTimeNoIsolatedCondition(
         Cube::Handle<Cube::ReconObjectContainer> objects, 
         Cube::Event::G4TrajectoryContainer trajectories) {
-    Cube::Handle<Cube::ReconObject> earliestObject;
+    Cube::Handle<Cube::ReconObject> tempEarliestObject;
     float tempEarliestT = 10E+5;
     for (const auto& o : *objects) {
         if (!isValidObject(o))
@@ -609,25 +694,25 @@ Cube::Handle<Cube::ReconObject> GetFirstObjectInTimeNoIsolatedCondition(
             Cube::Handle<Cube::G4Trajectory> traj = trajectories[mainTraj];
             if (usingMedian && traj->GetPDGCode() != -13 && track->GetMedian().T() < tempEarliestT && track->GetEDeposit() > THRESHOLD) {
                 tempEarliestT = track->GetMedian().T();
-                earliestObject = o;
+                tempEarliestObject = o;
             } else if (!usingMedian && traj->GetPDGCode() != -13 && track->GetPosition().T() < tempEarliestT && track->GetEDeposit() > THRESHOLD) {
                 tempEarliestT = track->GetPosition().T();
-                earliestObject = o;
+                tempEarliestObject = o;
             }
         } else if (cluster) {
             int mainTraj = Cube::Tool::MainTrajectory(*event, *cluster);
             Cube::Handle<Cube::G4Trajectory> traj = trajectories[mainTraj];
             if (usingMedian && traj->GetPDGCode() != -13 && cluster->GetMedian().T() < tempEarliestT && cluster->GetEDeposit() > THRESHOLD) {
                 tempEarliestT = cluster->GetMedian().T();
-                earliestObject = o;
+                tempEarliestObject = o;
             } else if (!usingMedian && traj->GetPDGCode() != -13 && cluster->GetPosition().T() < tempEarliestT && cluster->GetEDeposit() > THRESHOLD) {
                 tempEarliestT = cluster->GetPosition().T();
-                earliestObject = o;
+                tempEarliestObject = o;
             }
         }
     }
-    if (!isValidObject(earliestObject) || tempEarliestT == 10E+5)
-        throw std::runtime_error("invalid earliestObject");
+    if (!isValidObject(tempEarliestObject) || tempEarliestT == 10E+5)
+        throw std::runtime_error("invalid tempEarliestObject");
 
     return earliestObject;
 }
@@ -682,7 +767,7 @@ void GetMaxAngleDistance(Cube::Handle<Cube::ReconObjectContainer> objects) {
     std::vector<float> isolatedObjectAngle;
     std::vector<float> isolatedObjectDistance;
 
-    for (int i = 1; i < isolatedObjectVector.size(); ++i) {
+    for (size_t i = 1; i < isolatedObjectVector.size(); ++i) {
         Cube::Handle<Cube::ReconTrack> track1 = isolatedObjectVector.at(i - 1);
         Cube::Handle<Cube::ReconCluster> cluster1 = isolatedObjectVector.at(i - 1);
         Cube::Handle<Cube::ReconTrack> track2 = isolatedObjectVector.at(i);
@@ -702,7 +787,7 @@ void GetMaxAngleDistance(Cube::Handle<Cube::ReconObjectContainer> objects) {
         isolatedObjectAngle.push_back(temp1.Angle(temp2));
         isolatedObjectDistance.push_back(Cube::Tool::DistanceBetweenObjects(*isolatedObjectVector.at(i - 1), *isolatedObjectVector.at(i)));
     }
-    for (int ii = 0; ii < isolatedObjectAngle.size(); ++ii) {
+    for (size_t ii = 0; ii < isolatedObjectAngle.size(); ++ii) {
         if (isolatedObjectAngle.at(ii) > maxAngle) {
             maxAngle = isolatedObjectAngle.at(ii);
             maxAngleCorrespondingDistance = isolatedObjectDistance.at(ii);
@@ -714,8 +799,8 @@ void GetMaxAngleDistance(Cube::Handle<Cube::ReconObjectContainer> objects) {
     }
 
     float tempAngle = 0;
-    for (int i = 0; i < isolatedObjectVector.size(); ++i) {
-        for (int j = 0; j < isolatedObjectVector.size(); ++j) {
+    for (size_t i = 0; i < isolatedObjectVector.size(); ++i) {
+        for (size_t j = 0; j < isolatedObjectVector.size(); ++j) {
             Cube::Handle<Cube::ReconTrack> track1 = isolatedObjectVector.at(i);
             Cube::Handle<Cube::ReconCluster> cluster1 = isolatedObjectVector.at(i);
             Cube::Handle<Cube::ReconTrack> track2 = isolatedObjectVector.at(j);
@@ -1043,7 +1128,7 @@ void FillEDepSimVariables() {
             //std::cout << "not matched" << std::endl;
         }
     }
-    for (int ii = 0; ii < process.size(); ++ii) {
+    for (size_t ii = 0; ii < process.size(); ++ii) {
         eDepProcess[ii] = process.at(ii);
         eDepProcessT[ii] = processT.at(ii);
     }
@@ -1080,36 +1165,36 @@ bool isTrueCCQE(Cube::Event::G4TrajectoryContainer trajectories) {
         return false;
 }
 //---------------------------------------------------------------------------------------- 
-bool isInFV(TLorentzVector vertex) {
-    if (std::abs(vertex.X()) > 2400/2 - 2*7.5 || std::abs(vertex.Y() + 2600) > 2160/2 - 2*7.5 || std::abs(vertex.Z() - 23400) > 1920/2 - 2*7.5)
+bool isInFV(TLorentzVector inVertex) {
+    if (std::abs(inVertex.X()) > 2400/2 - 2*7.5 || std::abs(inVertex.Y() + 2600) > 2160/2 - 2*7.5 || std::abs(inVertex.Z() - 23400) > 1920/2 - 2*7.5)
         return false;
     else
         return true;
 }
 //---------------------------------------------------------------------------------------- 
-bool isInFV1920width(TLorentzVector vertex) {
-    if (-1200 + 7.5 > vertex.X() || vertex.X() > -1200 + 1920 - 7.5 || std::abs(vertex.Y() + 2600) > 2160/2 - 2*7.5 || std::abs(vertex.Z() - 23400) > 1920/2 - 2*7.5)
+bool isInFV1920width(TLorentzVector inVertex) {
+    if (-1200 + 7.5 > inVertex.X() || inVertex.X() > -1200 + 1920 - 7.5 || std::abs(inVertex.Y() + 2600) > 2160/2 - 2*7.5 || std::abs(inVertex.Z() - 23400) > 1920/2 - 2*7.5)
         return false;
     else
         return true;
 }
 //---------------------------------------------------------------------------------------- 
-bool isInFV1600width(TLorentzVector vertex) {
-    if (-1200 + 7.5 > vertex.X() || vertex.X() > -1200 + 1600 - 7.5 || std::abs(vertex.Y() + 2600) > 2160/2 - 2*7.5|| std::abs(vertex.Z() - 23400) > 1920/2- 2*7.5)
+bool isInFV1600width(TLorentzVector inVertex) {
+    if (-1200 + 7.5 > inVertex.X() || inVertex.X() > -1200 + 1600 - 7.5 || std::abs(inVertex.Y() + 2600) > 2160/2 - 2*7.5|| std::abs(inVertex.Z() - 23400) > 1920/2- 2*7.5)
         return false;
     else
         return true;
 }
 //---------------------------------------------------------------------------------------- 
-bool isInFV1920widthObject(TLorentzVector vertex) {
-    if (-1200 > vertex.X() || vertex.X() > -1200 + 1920 || std::abs(vertex.Y() + 2600) > 2160/2|| std::abs(vertex.Z() - 23400) > 1920/2)
+bool isInFV1920widthObject(TLorentzVector inVertex) {
+    if (-1200 > inVertex.X() || inVertex.X() > -1200 + 1920 || std::abs(inVertex.Y() + 2600) > 2160/2|| std::abs(inVertex.Z() - 23400) > 1920/2)
         return false;
     else
         return true;
 }
 //---------------------------------------------------------------------------------------- 
-bool isInFV1600widthObject(TLorentzVector vertex) {
-    if (-1200 > vertex.X() || vertex.X() > -1200 + 1600 || std::abs(vertex.Y() + 2600) > 2160/2|| std::abs(vertex.Z() - 23400) > 1920/2)
+bool isInFV1600widthObject(TLorentzVector inVertex) {
+    if (-1200 > inVertex.X() || inVertex.X() > -1200 + 1600 || std::abs(inVertex.Y() + 2600) > 2160/2|| std::abs(inVertex.Z() - 23400) > 1920/2)
         return false;
     else
         return true;
@@ -1217,7 +1302,7 @@ void FillNumberOfObjectFromPrimaryNeutron(
     }
 }
 //---------------------------------------------------------------------------------------- 
-double GetTransverseMomentum(const Cube::Handle<Cube::ReconObject>& object) {
-    double tempTransverseMomentum = 0;
-    return tempTransverseMomentum;
-}
+//double GetTransverseMomentum(const Cube::Handle<Cube::ReconObject>& object) {
+//    double tempTransverseMomentum = 0;
+//    return tempTransverseMomentum;
+//}

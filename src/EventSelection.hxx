@@ -75,6 +75,11 @@ int primaryPDG;
 int parentPDG;
 int trackNum;
 int objectPDG;
+
+//genie reweight
+int eventnum;
+float avg_weight;
+
 //0: sig track, 1: sig cluster, 2: bkg track, 3: bkg cluster
 int category;
 float leptonAngle;
@@ -122,6 +127,7 @@ float object2X[1000];
 float object2Y[1000];
 float object2Z[1000];
 float transverseMomentum;
+float reWeight;
 int numberOfObjectFromPrimaryNeutron[1000];
 
 auto outputFile = std::make_shared<TFile> ("variableOutput.root","RECREATE");
@@ -154,7 +160,7 @@ void InitializeOutputVariables();
 bool isNuMuBar();
 void FillGenieInformation();
 std::vector<Cube::Handle<Cube::ReconObject>> GetMuonObjectVector(Cube::Event::G4TrajectoryContainer trajectories, Cube::Handle<Cube::ReconObjectContainer> objects);
-TLorentzVector SetTrueVetex(Cube::Event::G4TrajectoryContainer trajectories);
+TLorentzVector SetTrueVetex();
 TLorentzVector SetRecoVertex(Cube::Event::G4TrajectoryContainer trajectories);
 int GetNumAssociated(Cube::Handle<Cube::ReconObjectContainer> objects);
 void FillPrimaryInformation(Cube::Event::G4TrajectoryContainer trajectories);

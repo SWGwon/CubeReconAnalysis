@@ -19,3 +19,8 @@ set(source
 add_executable(analysisExample ${source})
 target_link_libraries(analysisExample LINK_PUBLIC cuberecon_io cuberecon_tools ${ROOT_LIBRARIES})
 install(TARGETS analysisExample RUNTIME DESTINATION bin)
+
+find_package(EDepSim)
+add_executable(EventSelection src/EventSelection.cxx src/EventSelection.hxx)
+target_link_libraries(EventSelection LINK_PUBLIC cuberecon_io cuberecon_tools ${ROOT_LIBRARIES} EDepSim::edepsim_io)
+install(TARGETS EventSelection RUNTIME DESTINATION bin)
