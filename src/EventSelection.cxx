@@ -4,6 +4,8 @@ std::string cubeReconFile;
 std::string genieFile;
 std::string genieReWeightFile;
 
+float weight[100];
+
 bool ParseArgs(int argc, char* argv[]);
 void PrintSyntax();
 
@@ -34,7 +36,7 @@ int main(int argc, char** argv) {
 
     TTree* inputGenieReWeightTree = (TTree*)inputGenieReWeightFile.Get("tree");
     inputGenieReWeightTree->SetBranchAddress("eventnum", &eventnum);
-    inputGenieReWeightTree->SetBranchAddress("avg_weight", &avg_weight);
+    inputGenieReWeightTree->SetBranchAddress("weight", &weight);
 
     //TTree* gEDepSimTree = (TTree*)inputEDepSimFile.Get("EDepSimEvents");
     //gEDepSimTree->SetBranchAddress("Event",&gEDepSimEvent);
@@ -44,6 +46,7 @@ int main(int argc, char** argv) {
         inputChain->GetEntry(i);
         inputGenieTree->GetEntry(i);
         inputGenieReWeightTree->GetEntry(i);
+        std::cout << "weight[0]: " << weight[0] << std::endl;
         //gEDepSimTree->GetEntry(i);
         Analysis(event);
         std::cout << "event: " << i << std::endl;
@@ -115,7 +118,7 @@ bool ParseArgs(int argc, char* argv[]) {
 }
 //----------------------------------------------------------------------------------------
 void PrintSyntax() {
-    std::cout << "./HighNuFitter\n";
+    std::cout << "./EventSelection\n";
     std::cout << "  --input-cuberecon ${cuberecon file}            (REQUIRED)\n";
     std::cout << "  --input-genie ${genie file}                    (REQUIRED)\n";
     std::cout << "  --input-genie-reweight ${genie reweight file}  (REQUIRED)\n";
@@ -137,7 +140,10 @@ void Analysis(Cube::Event* inEvent) {
     if (!objects) 
         return;
 
-    reWeight = avg_weight;
+    for (int i = 0; i < 100; ++i) {
+        reWeight[i] = weight[i];
+        if (weight[i] != 0) std::cout << weight[i] << std::endl;
+    }
     
     //FillObjectPosition(objects);
     FillPrimaryInformation(trajectories);
@@ -257,7 +263,7 @@ void SetOutputTree() {
     outputTree->Branch("object2Z", &object2Z, "object2Z[1000]/F");
     outputTree->Branch("genieN", &genieN);
     outputTree->Branch("numberOfObjectFromPrimaryNeutron", &numberOfObjectFromPrimaryNeutron, "numberOfObjectFromPrimaryNeutron[1000]/I");
-    outputTree->Branch("reWeight", &reWeight);
+    outputTree->Branch("reWeight", &reWeight, "reWeight[100]/F");
 
     outputTree->Branch("isIn1920width", &isIn1920width);
     outputTree->Branch("isIn1600width", &isIn1600width);

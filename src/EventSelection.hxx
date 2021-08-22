@@ -127,7 +127,7 @@ float object2X[1000];
 float object2Y[1000];
 float object2Z[1000];
 float transverseMomentum;
-float reWeight;
+float reWeight[100];
 int numberOfObjectFromPrimaryNeutron[1000];
 
 auto outputFile = std::make_shared<TFile> ("variableOutput.root","RECREATE");
